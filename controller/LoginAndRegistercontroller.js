@@ -1,5 +1,4 @@
 const bcrypt = require('bcryptjs');
-const router = require('express').Router();
 const { StatusCodes } = require('http-status-codes');
 const connectDB = require('../Db/connectToDb');
 const {
@@ -11,7 +10,11 @@ const asyncWrapper = require('../middleware/async');
 const { BadRequestErr } = require('../error/index');
 const UnAuthorizedErr = require('../error/unAuthorizedErr');
 const jwt = require('jsonwebtoken');
-
+//
+//
+//
+//
+//
 const register = asyncWrapper(async (req, res) => {
   await connectDB(process.env.MONGO_URI);
 
@@ -25,23 +28,38 @@ const register = asyncWrapper(async (req, res) => {
   }
 
   // Hash password and replace password with it
-  let { Password } = req.body;
+  let { Password, username, email } = req.body;
   req.body.Password = bcrypt.hashSync(Password, 10);
+
+  //check if username or email exist before
+  let userExist = await registrationModel
+    .findOne({
+      $or: [{ username: username }, { email: email }],
+    })
+    .select('-Password');
+  if (userExist) {
+    if (username == userExist.username) {
+      throw new BadRequestErr(
+        `username ${username} already belongs to another user`
+      );
+    }
+    if (email == userExist.email) {
+      throw new BadRequestErr(
+        `email has already been used to create an account`
+      );
+    }
+  }
 
   //Create User
   await registrationModel.create(req.body);
+  let user = await registrationModel
+    .findOne({ username: username })
+    .select('_id');
 
-  //Assign Token
-  let {
-    Firstname,
-    Lastname,
-    Country,
-    username: Username,
-    email,
-  } = req.body;
-
+  // Send new user a token
+  let id = user._id;
   const token = jwt.sign(
-    { Firstname, Lastname, Country, Username, email },
+    { username, id },
     process.env.JWT_SECRET,
     {
       expiresIn: '30d',
@@ -53,7 +71,11 @@ const register = asyncWrapper(async (req, res) => {
     msg: `${req.body.Firstname} your account has been created`,
   });
 });
-
+//
+//
+//
+//
+//
 const login = asyncWrapper(async (req, res) => {
   // check if username or email is provided
   const { username, Password } = req.body;
@@ -92,24 +114,10 @@ const login = asyncWrapper(async (req, res) => {
     );
   }
 
-  //return Userdata as response
-  let outputUser = await registrationModel
-    .findOne({
-      $or: [{ username: username }, { email: username }],
-    })
-    .select('-Password');
-
   // Assign token
-  let {
-    Firstname,
-    Lastname,
-    Country,
-    username: Username,
-    email,
-  } = outputUser;
-
+  let id = user._id;
   const token = jwt.sign(
-    { Firstname, Lastname, Country, Username, email },
+    { username, id },
     process.env.JWT_SECRET,
     {
       expiresIn: '30d',
@@ -117,9 +125,15 @@ const login = asyncWrapper(async (req, res) => {
   );
 
   res.header('token', token);
-  res.status(StatusCodes.ACCEPTED).json(outputUser);
+  res
+    .status(StatusCodes.ACCEPTED)
+    .json({ msg: `Welcome ${user.Firstname}` });
 });
-
+//
+//
+//
+//
+//
 module.exports = {
   register,
   login,
